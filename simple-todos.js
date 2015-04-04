@@ -28,7 +28,9 @@ if (Meteor.isClient) {
 
             Tasks.insert({
                 text: taskValue,
-                createdAt: new Date()
+                createdAt: new Date(),
+                owner: Meteor.userId(),
+                username: Meteor.user().profile.name
             });
 
             event.target.text.value = "";
@@ -53,10 +55,19 @@ if (Meteor.isClient) {
             Tasks.remove(this._id);
         }
     });
+
+    Accounts.ui.config({
+        passwordSignupFields: "USERNAME_ONLY"
+    });
 }
 
 if (Meteor.isServer) {
     Meteor.startup(function () {
-        // code to run on server at startup
+        Accounts.onCreateUser(function(options, user) {
+            // We're enforcing at least an empty profile object to avoid needing to check
+            // for its existence later.
+            user.profile = options.profile ? options.profile : {};
+            return user;
+        });
     });
 }
