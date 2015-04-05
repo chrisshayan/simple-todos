@@ -1,6 +1,8 @@
 Tasks = new Mongo.Collection("tasks");
 
 if (Meteor.isClient) {
+    Meteor.subscribe("tasks");
+
     // This code only runs on the client
     Template.body.helpers({
         tasks: function () {
@@ -19,6 +21,10 @@ if (Meteor.isClient) {
 
         incompleteCount: function () {
             return Tasks.find({checked: {$ne: true}}).count();
+        },
+
+        isOwner: function () {
+            return this.owner === Meteor.userId;
         }
     });
 
@@ -41,11 +47,15 @@ if (Meteor.isClient) {
     Template.task.events({
         "click .toggle-checked": function () {
             // Set the checked property to the opposite of its current value
-            Meteor.call("setChecked", this._id, ! this.checked);
+            Meteor.call("setChecked", this._id, !this.checked);
         },
 
         "click .delete": function () {
             Meteor.call("deleteTask", this._id);
+        },
+
+        "click .toggle-private": function () {
+            Meteor.call("setPrivate", this._id, ! this.private);
         }
     });
 
@@ -55,19 +65,19 @@ if (Meteor.isClient) {
 }
 
 if (Meteor.isServer) {
-    Meteor.startup(function () {
-        Accounts.onCreateUser(function(options, user) {
-            // We're enforcing at least an empty profile object to avoid needing to check
-            // for its existence later.
-            user.profile = options.profile ? options.profile : {};
-            return user;
+    Meteor.publish("tasks", function () {
+        return Tasks.find({
+            $and: [
+                { private: {$ne: true} },
+                { owner: this.userId }
+            ]
         });
-    });
+    })
 }
 
 Meteor.methods({
     addTask: function (text) {
-        if(! Meteor.userId()) {
+        if (!Meteor.userId()) {
             throw new Meteor.Error("not-authorized");
         }
 
@@ -78,10 +88,34 @@ Meteor.methods({
             username: Meteor.user().profile.name
         })
     },
+
     deleteTask: function (taskId) {
+        var task = Tasks.findOne(taskId);
+        if (task.private && task.owner !== Meteor.userId()) {
+            // If the task is private, make sure only the owner can delete it
+            throw new Meteor.Error("not-authorized");
+        }
+
         Tasks.remove(taskId);
     },
-    setChecked: function(taskId, setChecked) {
+
+    setChecked: function (taskId, setChecked) {
+        var task = Tasks.findOne(taskId);
+        if (task.private && task.owner !== Meteor.userId()) {
+            // If the task is private, make sure only the owner can check it off
+            throw new Meteor.Error("not-authorized");
+        }
+
         Tasks.update(taskId, {$set: {checked: setChecked}});
+    },
+
+    setPrivate: function (taskId, setToPrivate) {
+        var task = Tasks.findOne(taskId);
+
+        if(taks.owner === Meteor.userId) {
+            Tasks.update(taskId, {$set: {private: setToPrivate}})
+        } else {
+            throw new Meteor.Error("not-authorized");
+        }
     }
 });
